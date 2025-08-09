@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OID-URL 연결 관리</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background-color: #f9f9f9; color: #333; }
+        h1, h2 { text-align: center; color: #1a73e8; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #1a73e8; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+        form { margin-top: 40px; padding: 20px; background-color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-radius: 8px; }
+        input[type="text"], input[type="url"] { width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        button { width: 100%; padding: 10px; background-color: #1a73e8; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background-color: #1558b3; }
+        #loading, #status { text-align: center; margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>OID - URL 관리 페이지</h1>
+
+    <h2>OID 목록</h2>
+    <div id="loading">목록을 불러오는 중...</div>
+    <table id="oidTable">
+        <thead>
+            <tr>
+                <th>OID</th>
+                <th>URL</th>
+            </tr>
+        </thead>
+        <tbody>
+            </tbody>
+    </table>
+
+    <h2>새 OID 추가</h2>
+    <form id="addForm">
+        <input type="text" id="oidInput" placeholder="OID 값을 입력하세요" required>
+        <input type="url" id="urlInput" placeholder="연결할 URL을 입력하세요" required>
+        <button type="submit">추가하기</button>
+    </form>
+    <div id="status"></div>
+
+    <script>
+        // ❗️❗️❗️ 이 부분에 2단계에서 복사한 본인의 Apps Script 웹 앱 URL을 붙여넣으세요! ❗️❗️❗️
+        const appsScriptUrl = https://script.google.com/macros/s/AKfycby0D-ZgUVeP5RUaOOBtIqBT7bQq5OpfwGTZFzbdlNtXR9BoEWK-0jaaXEfS56xkkpU/exec;
+
+        const tableBody = document.querySelector('#oidTable tbody');
+        const loadingDiv = document.getElementById('loading');
+        const statusDiv = document.getElementById('status');
+        const addForm = document.getElementById('addForm');
+
+        // (1) 구글 시트에서 OID 목록을 가져와서 표를 채우는 함수
+        async function fetchOidList() {
+            loadingDiv.textContent = '목록을 불러오는 중...';
+            tableBody.innerHTML = ''; // 기존 목록 비우기
+            try {
+                const response = await fetch(appsScriptUrl);
+                const data = await response.json();
+
+                if (data.length === 0) {
+                    loadingDiv.textContent = '저장된 데이터가 없습니다.';
+                } else {
+                    data.forEach(item => {
+                        const row = tableBody.insertRow();
+                        const oidCell = row.insertCell();
+                        const urlCell = row.insertCell();
+                        oidCell.textContent = item.oid;
+                        urlCell.textContent = item.url;
+                    });
+                    loadingDiv.style.display = 'none'; // 로딩 메시지 숨기기
+                }
+            } catch (error) {
+                loadingDiv.textContent = '목록을 불러오는 데 실패했습니다. Apps Script 배포 설정을 확인하세요.';
+                console.error('Error fetching data:', error);
+            }
+        }
+
+        // (2) 새 OID와 URL을 구글 시트에 추가하는 함수
+        async function addOid(event) {
+            event.preventDefault(); // 폼의 기본 제출 동작 막기
+
+            const oid = document.getElementById('oidInput').value;
+            const url = document.getElementById('urlInput').value;
+
+            statusDiv.textContent = '추가하는 중...';
+
+            try {
+                const response = await fetch(appsScriptUrl, {
+                    method: 'POST',
+                    mode: 'no-cors', // CORS 에러 방지를 위해 필요
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ oid, url }),
+                });
+
+                statusDiv.textContent = `'${oid}'가 성공적으로 추가되었습니다!`;
+                addForm.reset(); // 입력칸 비우기
+                fetchOidList(); // 목록 새로고침
+            } catch (error) {
+                statusDiv.textContent = '추가하는 데 실패했습니다.';
+                console.error('Error adding data:', error);
+            }
+        }
+
+        // 페이지가 처음 열릴 때 목록을 가져옴
+        document.addEventListener('DOMContentLoaded', fetchOidList);
+        // '추가하기' 버튼을 눌렀을 때 addOid 함수 실행
+        addForm.addEventListener('submit', addOid);
+    </script>
+
+</body>
+</html>
