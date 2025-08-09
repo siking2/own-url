@@ -1,1 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase NUMBER 관리</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background-color: #f9f9f9; color: #333; }
+        #authSection, #dataSection { text-align: center; margin-bottom: 20px; }
+        h1, h2 { text-align: center; color: #f57c00; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        th, td { padding: 12px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #f57c00; color: white; }
+        form { margin-top: 40px; padding: 20px; background-color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); border-radius: 8px; }
+        input { width: calc(100% - 22px); padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 15px; background-color: #f57c00; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin: 5px; }
+        button:hover { background-color: #ef6c00; }
+        #userInfo { font-weight: bold; }
+        #dataSection { display: none; } /* 처음에는 데이터 영역 숨기기 */
+    </style>
+</head>
+<body>
 
+    <h1>나만의 NUMBER 관리 페이지</h1>
+
+    <div id="authSection">
+        <div id="userInfo"></div>
+        <button id="loginBtn">Google 계정으로 로그인</button>
+        <button id="logoutBtn" style="display: none;">로그아웃</button>
+    </div>
+
+    <div id="dataSection">
+        <h2>내 NUMBER 목록</h2>
+        <table id="numberTable">
+            <thead><tr><th>NUMBER</th><th>URL</th><th>삭제</th></tr></thead>
+            <tbody></tbody>
+        </table>
+
+        <h2>새 NUMBER 추가</h2>
+        <form id="addForm">
+            <input type="text" id="numberInput" placeholder="NUMBER 값을 입력하세요" required>
+            <input type="url" id="urlInput" placeholder="연결할 URL을 입력하세요" required>
+            <button type="submit">추가하기</button>
+        </form>
+        <div id="status"></div>
+    </div>
+
+
+    <script type="module">
+        // Import the functions you need from the SDKs you need
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+
+        // ▼▼▼ 여기에 4-1 단계에서 복사한 firebaseConfig 내용을 붙여넣으세요! ▼▼▼
+         const firebaseConfig = {
+            apiKey: "AIzaSyAmvbE1yg0MeAODYo1dOTZR_Ab_j_2fyzs",
+            authDomain: "number-url.firebaseapp.com",
+            projectId: "number-url",
+            storageBucket: "number-url.firebasestorage.app",
+            messagingSenderId: "595391166571",
+            appId: "1:595391166571:web:022347b75d2099a707192e"
+          };
+
+        // ▲▲▲ 여기에 4-1 단계에서 복사한 firebaseConfig 내용을 붙여넣으세요! ▲▲▲
+
+        // Firebase 앱 초기화
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const provider = new GoogleAuthProvider();
+
+        const loginBtn = document.getElementById('loginBtn');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const userInfoDiv = document.getElementById('userInfo');
+        const dataSection = document.getElementById('dataSection');
+        const addForm = document.getElementById('addForm');
+        const tableBody = document.querySelector('#numberTable tbody');
+
+        // 로그인 버튼 클릭 이벤트
+        loginBtn.addEventListener('click', async () => {
+            try {
+                const result = await signInWithPopup(auth, provider);
+                console.log("로그인 성공:", result.user);
+            } catch (error) {
+                console.error("로그인 에러:", error);
+            }
+        });
+
+        // 로그아웃 버튼 클릭 이벤트
+        logoutBtn.addEventListener('click', async () => {
+            await signOut(auth);
+            console.log("로그아웃 성공");
+        });
+
+        // 사용자의 로그인 상태 변화 감지
+        onAuthStateChanged(auth, user => {
+            if (user) {
+                // 사용자가 로그인했을 때
+                userInfoDiv.textContent = `${user.displayName}님, 환영합니다.`;
+                loginBtn.style.display = 'none';
+                logoutBtn.style.display = 'block';
+                dataSection.style.display = 'block';
+                loadNumberData(user.uid); // 로그인한 사용자의 데이터 불러오기
+            } else {
+                // 사용자가 로그아웃했을 때
+                userInfoDiv.textContent = '로그인해주세요.';
+                loginBtn.style.display = 'block';
+                logoutBtn.style.display = 'none';
+                dataSection.style.display = 'none';
+                tableBody.innerHTML = ''; // 테이블 비우기
+            }
+        });
+
+        // 새 NUMBER 추가 폼 제출 이벤트
+        addForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const number = document.getElementById('numberInput').value;
+            const url = document.getElementById('urlInput').value;
+            const user = auth.currentUser;
+
+            if (user) {
+                // 사용자 고유 ID 아래에 NUMBER 데이터를 저장
+                const userNumberCollection = collection(db, 'users', user.uid, 'numbers');
+                await setDoc(doc(userNumberCollection, number), { url: url });
+                
+                addForm.reset();
+                loadNumberData(user.uid); // 목록 새로고침
+            }
+        });
+
+        // Firestore에서 NUMBER 데이터 불러오기
+        async function loadNumberData(userId) {
+            tableBody.innerHTML = '';
+            const userNumberCollection = collection(db, 'users', userId, 'numbers');
+            const querySnapshot = await getDocs(userNumberCollection);
+            
+            querySnapshot.forEach(doc => {
+                const row = tableBody.insertRow();
+                row.innerHTML = `
+                    <td>${doc.id}</td>
+                    <td>${doc.data().url}</td>
+                    <td><button class="delete-btn" data-number="${doc.id}">삭제</button></td>
+                `;
+            });
+        }
+
+        // 삭제 버튼 클릭 이벤트 (이벤트 위임)
+        tableBody.addEventListener('click', async (e) => {
+            if (e.target && e.target.classList.contains('delete-btn')) {
+                const number = e.target.dataset.number;
+                const user = auth.currentUser;
+                if (user && confirm(`NUMBER '${number}'를 정말 삭제하시겠습니까?`)) {
+                    await deleteDoc(doc(db, 'users', user.uid, 'numbers', number));
+                    loadNumberData(user.uid); // 목록 새로고침
+                }
+            }
+        });
+
+    </script>
+</body>
+</html>
